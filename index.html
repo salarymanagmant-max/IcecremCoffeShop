@@ -2270,29 +2270,71 @@ body.has-install-bar { padding-bottom: 80px; }
         async function saveInvoices() { await saveAll(STORES.INVOICES, invoices); }
         async function saveUsers() { await saveAll(STORES.USERS, users); }
 
-        // ---- تحميل المنتجات من الشيت (مع نسخة محلية احتياطية) ----
+ // ===== المنتجات الافتراضية (5 لكل قسم) =====
+const DEFAULT_PRODUCTS = [
+  // آيسكريم
+  { name: 'آيسكريم فانيليا',     category: 'الايسكريم', barcode: '1001', price: 0.500 },
+  { name: 'آيسكريم شوكولاتة',   category: 'الايسكريم', barcode: '1002', price: 0.500 },
+  { name: 'آيسكريم فراولة',     category: 'الايسكريم', barcode: '1003', price: 0.500 },
+  { name: 'آيسكريم مانجو',      category: 'الايسكريم', barcode: '1004', price: 0.600 },
+  { name: 'كوكيز آند كريم',     category: 'الايسكريم', barcode: '1005', price: 0.700 },
+  // قهوة
+  { name: 'إسبريسو',            category: 'القهوة', barcode: '2001', price: 0.800 },
+  { name: 'كابتشينو',           category: 'القهوة', barcode: '2002', price: 1.200 },
+  { name: 'لاتيه',              category: 'القهوة', barcode: '2003', price: 1.300 },
+  { name: 'قهوة عربية',         category: 'القهوة', barcode: '2004', price: 0.700 },
+  { name: 'موكا',               category: 'القهوة', barcode: '2005', price: 1.400 },
+  // حلويات
+  { name: 'تشيز كيك',           category: 'الحلويات', barcode: '3001', price: 1.800 },
+  { name: 'براوني',             category: 'الحلويات', barcode: '3002', price: 1.200 },
+  { name: 'كرواسان',            category: 'الحلويات', barcode: '3003', price: 0.900 },
+  { name: 'دونات',              category: 'الحلويات', barcode: '3004', price: 0.600 },
+  { name: 'كنافة',              category: 'الحلويات', barcode: '3005', price: 1.500 },
+  // مشروبات
+  { name: 'عصير برتقال',        category: 'المشروبات', barcode: '4001', price: 1.000 },
+  { name: 'ماء',                category: 'المشروبات', barcode: '4002', price: 0.200 },
+  { name: 'كولا',               category: 'المشروبات', barcode: '4003', price: 0.400 },
+  { name: 'موهيتو',             category: 'المشروبات', barcode: '4004', price: 1.300 },
+  { name: 'شاي كرك',            category: 'المشروبات', barcode: '4005', price: 0.500 },
+  // اكلات
+  { name: 'برجر دجاج',          category: 'اكلات', barcode: '5001', price: 2.000 },
+  { name: 'ساندويتش جبنة',      category: 'اكلات', barcode: '5002', price: 1.200 },
+  { name: 'بيتزا ميني',         category: 'اكلات', barcode: '5003', price: 1.800 },
+  { name: 'بطاطس مقلية',        category: 'اكلات', barcode: '5004', price: 0.900 },
+  { name: 'شاورما دجاج',        category: 'اكلات', barcode: '5005', price: 1.500 }
+];
+
+function newProductId() {
+    const max = products.reduce((m, p) => Math.max(m, parseInt(String(p.id).replace(/\D/g, '')) || 0), 0);
+    return 'P' + String(max + 1).padStart(4, '0');
+}
+
+function buildDefaultProducts() {
+    return DEFAULT_PRODUCTS.map((p, i) => ({
+        id: 'P' + String(i + 1).padStart(4, '0'),
+        name: p.name, category: p.category, barcode: p.barcode,
+        price: p.price, quantity: 100, tax: 5, spend: 0, spendPrice: 0
+    }));
+}
+
 async function loadProducts() {
-    const cached = await getAll(STORES.PRODUCTS);
-    try {
-        await flushProductQueue();
-        const r = await papi('products_list');
-        if (!r.ok) throw new Error(r.error || 'load_failed');
-        products = r.products.map(fromSheetProduct);
- 
-        // ترحيل لمرة واحدة: الشيت فارغ وتوجد منتجات محلية قديمة
-        if (products.length === 0 && cached.length > 0) {
-            const yes = await showConfirm(`يوجد ${cached.length} منتج محلي. هل ترفعها إلى Google Sheet؟`, 'ترحيل المنتجات');
-            if (yes) {
-                const up = await papi('products_bulkSave', { products: cached.map(toSheetProduct) });
-                if (up.ok) products = up.products.map(fromSheetProduct);
-            }
-        }
-        await saveProducts();   // تحديث النسخة المحلية
-    } catch (e) {
-        console.warn('تعذر جلب المنتجات من الشيت:', e);
-        products = cached || [];
-        showToast('تعذر الاتصال بالشيت - تم تحميل النسخة المحلية', 'warning', 4000);
+    products = await getAll(STORES.PRODUCTS) || [];
+    if (products.length === 0) {                 // أول تشغيل: أضف المنتجات الافتراضية
+        products = buildDefaultProducts();
+        await saveProducts();
     }
+    localStorage.removeItem('pendingProductOps'); // تنظيف طابور الشيت القديم
+}
+
+// تسجيل المبيعات محلياً (sign = 1 بيع، -1 استرداد)
+async function recordSale(items, sign = 1) {
+    items.forEach(i => {
+        const p = products.find(x => x.id === i.id);
+        if (!p) return;
+        p.spend      = Math.max(0, +((p.spend || 0)      + sign * i.quantity).toFixed(3));
+        p.spendPrice = Math.max(0, +((p.spendPrice || 0) + sign * i.total).toFixed(3));
+    });
+    await saveProducts();
 }
         async function loadCustomers() { customers = await getAll(STORES.CUSTOMERS); }
         async function loadInvoices() { invoices = await getAll(STORES.INVOICES); }
@@ -2491,71 +2533,11 @@ function applyPermissions() {
 
 /* ================= (أ) إضافات جديدة ================= */
  
-// رابط نشر السكربت الجديد (Web app URL). إذا دمجته مع سكربت المستخدمين اجعله = API_URL
-const PRODUCTS_API_URL = 'https://script.google.com/macros/s/AKfycbyB1gWSDr3Uc0grNtbI3SMq-MS-vrO3mdi_M-_oIuMW9KmqauYQJePV5yMn9otcdEmLXw/exec';
- 
-async function papi(action, payload = {}) {
-    const res = await fetch(PRODUCTS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action, ...payload })     // text/plain لتجنب CORS
-    });
-    return await res.json();
-}
+
  
 // تحويل بين شكل البرنامج وشكل الشيت
-function toSheetProduct(p) {
-    return {
-        ProdID: p.id || '', ProdName: p.name, ProdBarcode: p.barcode || '',
-        ProdSection: p.category, ProdPrice: p.price, ProdQnt: p.quantity, PordVat: p.tax
-    };
-}
-function fromSheetProduct(r) {
-    return {
-        id: r.ProdID, name: r.ProdName, barcode: String(r.ProdBarcode || ''),
-        category: r.ProdSection, price: Number(r.ProdPrice) || 0,
-        quantity: Number(r.ProdQnt) || 0, tax: Number(r.PordVat) || 0,
-        spend: Number(r.ProdSpend) || 0, spendPrice: Number(r.ProdSpendPrice) || 0
-    };
-}
- 
-// تحديث المنتجات محلياً من رد السيرفر
-async function applyServerProducts(list) {
-    (list || []).map(fromSheetProduct).forEach(sp => {
-        const i = products.findIndex(p => p.id === sp.id);
-        if (i >= 0) products[i] = sp; else products.push(sp);
-    });
-    await saveProducts();       // نسخة محلية احتياطية فقط
-    applyFilters();
-}
- 
-// طابور عمليات البيع/الاسترداد عند انقطاع الإنترنت
-function queueProductOp(action, payload) {
-    const q = JSON.parse(localStorage.getItem('pendingProductOps') || '[]');
-    q.push({ action, payload });
-    localStorage.setItem('pendingProductOps', JSON.stringify(q));
-}
-async function flushProductQueue() {
-    let q = JSON.parse(localStorage.getItem('pendingProductOps') || '[]');
-    while (q.length) {
-        try {
-            const r = await papi(q[0].action, q[0].payload);
-            if (!r.ok && r.error !== 'empty') break;
-        } catch (e) { break; }
-        q.shift();
-        localStorage.setItem('pendingProductOps', JSON.stringify(q));
-    }
-}
-async function sendProductOp(action, payload) {
-    try {
-        const r = await papi(action, payload);
-        if (r.ok) await applyServerProducts(r.products);
-    } catch (e) {
-        queueProductOp(action, payload);
-        showToast('لا يوجد اتصال - ستُرسل المبيعات للشيت لاحقاً', 'warning', 4000);
-    }
-}
- 
 
+ 
 
         // =============================================
         // تهيئة البيانات
@@ -3067,9 +3049,7 @@ async function sendProductOp(action, payload) {
             if (sessionCreds && sessionCreds.phone && !currentUser.isAdmin) {
     api('addBill', { phone: sessionCreds.phone, pass: sessionCreds.pass, amount: grandTotal }).catch(() => {});
 }
-sendProductOp('products_sale', {
-    items: cart.map(i => ({ id: i.id, name: i.name, qty: i.quantity, amount: i.total }))
-});
+await recordSale(cart, 1);
             showInvoice(invoice);
             
             setTimeout(() => { printInvoiceDirect(); }, 500);
@@ -3424,7 +3404,7 @@ html{
             document.getElementById('productModal').style.display = 'block';
         }
 
-      async function saveProduct(event) {
+    async function saveProduct(event) {
     event.preventDefault();
     const name = document.getElementById('productName').value.trim();
     const category = document.getElementById('productCategory').value;
@@ -3432,30 +3412,22 @@ html{
     const quantity = parseInt(document.getElementById('productQuantity').value) || 0;
     const tax = parseFloat(document.getElementById('productTax').value) || 0;
     const barcode = document.getElementById('productBarcode').value.trim() || `BAR${Date.now()}`;
-    const id = editingProductId || '';
- 
+
     if (!name || !category || isNaN(price) || price <= 0) {
         await showAlert('يرجى إدخال اسم المنتج والقسم وسعر صحيح', 'خطأ في الإدخال', 'warning');
         return;
     }
-    if (products.some(p => p.name === name && p.id !== id)) {
+    if (products.some(p => p.name === name && p.id !== editingProductId)) {
         await showAlert('يوجد منتج بنفس الاسم', 'تنبيه', 'warning');
         return;
     }
- 
-    showLoading();
-    try {
-        const r = await papi('products_save', { product: toSheetProduct({ id, name, category, barcode, price, quantity, tax }) });
-        if (!r.ok) throw new Error(r.error || 'save_failed');
-        const saved = fromSheetProduct(r.product);
-        const idx = products.findIndex(p => p.id === saved.id);
-        if (idx >= 0) products[idx] = saved; else products.push(saved);
-    } catch (e) {
-        hideLoading();
-        await showAlert('تعذر الحفظ في Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
-        return;
+    if (editingProductId) {
+        const p = products.find(x => x.id === editingProductId);
+        if (p) Object.assign(p, { name, category, barcode, price, quantity, tax });
+    } else {
+        products.push({ id: newProductId(), name, category, barcode, price, quantity, tax, spend: 0, spendPrice: 0 });
     }
-    hideLoading();
+    editingProductId = null;
     await saveProducts();
     applyFilters();
     closeModal('productModal');
@@ -3631,16 +3603,6 @@ html{
 async function deleteProduct(id) {
     const confirmed = await showConfirm('هل أنت متأكد من حذف هذا المنتج؟', 'تأكيد');
     if (!confirmed) return;
-    showLoading();
-    try {
-        const r = await papi('products_delete', { id });
-        if (!r.ok && r.error !== 'not_found') throw new Error(r.error);
-    } catch (e) {
-        hideLoading();
-        await showAlert('تعذر الحذف من Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
-        return;
-    }
-    hideLoading();
     products = products.filter(p => p.id !== id);
     await saveProducts();
     applyFilters();
@@ -3666,27 +3628,10 @@ async function deleteProduct(id) {
         await showAlert('الكمية المضافة يجب ألا تكون سالبة', 'خطأ في الإدخال', 'warning');
         return;
     }
-    const product = products.find(p => p.id === productId);
+     const product = products.find(p => p.id === productId);
     if (!product) return;
-    const newLocalQty = +(product.quantity + addQty).toFixed(3);
-
-    showLoading();
-    try {
-        const r = await papi('products_save', {
-            product: {
-                ...toSheetProduct({ id: productId, name, category, barcode, price, quantity: product.quantity, tax }),
-                AddQnt: addQty            // السيرفر يجمعها مع الكمية الحالية
-            }
-        });
-        if (!r.ok) throw new Error(r.error || 'save_failed');
-        Object.assign(product, fromSheetProduct(r.product));
-        product.quantity = newLocalQty;   // الكمية المحلية = الحالية + المضافة
-    } catch (e) {
-        hideLoading();
-        await showAlert('تعذر التعديل في Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
-        return;
-    }
-    hideLoading();
+    Object.assign(product, { name, category, barcode, price, tax });
+    product.quantity = +(product.quantity + addQty).toFixed(3);
     await saveProducts();
     applyFilters();
     showProductsList();
@@ -3745,7 +3690,7 @@ async function deleteProduct(id) {
             const tax = parseFloat(row[5]) || 0;
             if (!name || !category || isNaN(price) || price <= 0) { errors.push(`الصف ${i + 1}: اسم أو قسم أو سعر غير صحيح`); continue; }
             if (!validCategories.includes(category)) { errors.push(`الصف ${i + 1}: القسم "${category}" غير معروف`); continue; }
-            newProducts.push({ id: '', name, category, barcode, price, quantity, tax });
+           newProducts.push({ id: '', name, category, barcode, price, quantity, tax, spend: 0, spendPrice: 0 });
         }
         if (newProducts.length === 0) {
             await showAlert('لم يتم العثور على منتجات صالحة للإضافة', 'تنبيه', 'warning');
@@ -3753,20 +3698,8 @@ async function deleteProduct(id) {
             return;
         }
  
-        showLoading();
-        let r;
-        try {
-            r = await papi('products_bulkSave', { products: newProducts.map(toSheetProduct) });
-            if (!r.ok) throw new Error(r.error);
-        } catch (e) {
-            hideLoading();
-            await showAlert('تعذر رفع المنتجات إلى Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
-            event.target.value = '';
-            return;
-        }
-        hideLoading();
-        products.push(...r.products.map(fromSheetProduct));
-        await saveProducts();
+    newProducts.forEach(p => { p.id = newProductId(); products.push(p); });
+    await saveProducts();
  
         let msg = `✅ تمت إضافة ${newProducts.length} منتج بنجاح.`;
         if (errors.length) msg += `\n\n⚠️ الأخطاء:\n${errors.join('\n')}`;
@@ -3811,12 +3744,12 @@ async function deleteFilteredProducts() {
         return;
     }
     hideLoading();
-    const set = new Set(ids);
+    const set = new Set(filtered.map(p => p.id));
     products = products.filter(p => !set.has(p.id));
     await saveProducts();
     applyFilters();
     if (document.getElementById('productsListModal').style.display === 'block') showProductsList();
-    await showToast(`✅ تم حذف ${ids.length} منتج بنجاح`, 'success');
+    await showToast(`✅ تم حذف ${set.size} منتج بنجاح`, 'success');
 }
 
 
@@ -4117,9 +4050,7 @@ async function deleteFilteredProducts() {
             });
             invoice.paymentMethod = 'مستردة';
             await saveInvoices();
-            sendProductOp('products_refund', {
-    items: invoice.items.map(i => ({ id: i.id, name: i.name, qty: i.quantity, amount: i.total }))
-});
+            await recordSale(invoice.items, -1);
             applyFilters();
             closeModal('refundModal');
             if (document.getElementById('invoicesListModal').style.display === 'block') {
@@ -4744,21 +4675,9 @@ async function openProductsReport() {
 }
 
 // يجلب آخر البيانات من الشيت (دون تغيير المنتجات الحالية في البرنامج)
-async function refreshProductsReport(fromServer) {
-    const note = document.getElementById('reportSourceNote');
+async function refreshProductsReport() {
     reportData = products.slice();
-    note.textContent = 'عرض البيانات المحلية';
-    if (fromServer) {
-        note.textContent = 'جاري التحديث البيانات ...';
-        try {
-            const r = await papi('products_list');
-            if (!r.ok) throw new Error(r.error);
-            reportData = r.products.map(fromSheetProduct);
-            note.textContent = '✅البيانات محدّثة';
-        } catch (e) {
-            note.textContent = '⚠️ تعذر الاتصال - تُعرض آخر بيانات محلية';
-        }
-    }
+    document.getElementById('reportSourceNote').textContent = '✅ البيانات المحلية';
     renderProductsReport();
 }
 
