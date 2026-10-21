@@ -1381,6 +1381,38 @@ body.has-install-bar { padding-bottom: 80px; }
 #booking { max-width: 640px; padding: 10px 16px 20px; }
 .booking-title { gap: 8px; margin-bottom: 8px; margin-top: -4px; align-items: flex-start; }
 .booking-title h2 { font-size: 18px; align-self: center; }
+/* ===== تقرير المنتجات ===== */
+.btn-report-products {
+    padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px;
+    font-weight: bold; cursor: pointer; color: white; background: #8e44ad;
+    display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s;
+}
+.btn-report-products:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+.rep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rep-card { background: #f8f9fa; border: 1px solid #ecf0f1; border-radius: 10px; padding: 12px; min-width: 0; }
+.rep-card-title { font-weight: bold; color: #2c3e50; font-size: 14px; margin-bottom: 10px; }
+.rep-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12px; }
+.rep-bar-label { flex: 0 0 110px; color: #2c3e50; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rep-bar-track { flex: 1; background: #e5e9ee; border-radius: 6px; height: 20px; overflow: hidden; min-width: 0; }
+.rep-bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
+.rep-bar-fill.qty { background: linear-gradient(90deg, #3498db, #2980b9); }
+.rep-bar-fill.amount { background: linear-gradient(90deg, #e67e22, #e74c3c); }
+.rep-bar-value { flex: 0 0 70px; text-align: left; font-weight: bold; color: #2c3e50; direction: ltr; }
+.rep-empty { text-align: center; color: #bdc3c7; padding: 25px 0; }
+.rep-totals {
+    display: flex; flex-wrap: wrap; gap: 10px 30px; justify-content: space-between; align-items: center;
+    margin-top: 10px; padding: 12px 16px; background: #f8f9fa; border-top: 2px solid #2c3e50;
+    border-radius: 0 0 8px 8px; font-size: 14px; font-weight: bold; color: #2c3e50;
+}
+@media (max-width: 768px) {
+    .rep-grid { grid-template-columns: 1fr; }
+    .rep-bar-label { flex-basis: 85px; }
+    .rep-bar-value { flex-basis: 60px; }
+}
+
+
+
     </style>
 </head>
 <body>
@@ -1598,6 +1630,7 @@ body.has-install-bar { padding-bottom: 80px; }
     <button id="btnUploadExcel" class="btn-users" style="background: #2ecc71;" onclick="document.getElementById('excelFileInput').click()">📤 رفع Excel</button>
     <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display: none;" onchange="handleExcelUpload(event)">
     <button id="btnDeleteFiltered" class="btn-users" style="background: #e74c3c;" onclick="deleteFilteredProducts()">🗑️ حذف الجماعي</button>
+    <button type="button" class="btn-report-products" onclick="openProductsReport()">📊 تقرير المنتجات</button>
 </div>
 
 <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
@@ -1625,6 +1658,62 @@ body.has-install-bar { padding-bottom: 80px; }
     </div>
 </div>
 
+
+<!-- مودال تقرير المنتجات -->
+<div id="productsReportModal" class="modal">
+    <div class="modal-content" style="max-width: 1100px;">
+        <div class="modal-header">
+            📊 تقرير المنتجات
+            <button class="modal-close" onclick="closeModal('productsReportModal')">✖</button>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:15px;">
+            <div style="flex:0 0 200px; min-width:150px;">
+                <select id="reportCategory" onchange="renderProductsReport()" style="width:100%; padding:8px 12px; border:2px solid #ddd; border-radius:8px; font-size:14px; background:white;">
+                    <option value="all">📋 جميع الأقسام</option>
+                    <option value="الايسكريم">🍦 آيسكريم</option>
+                    <option value="القهوة">☕ قهوة</option>
+                    <option value="الحلويات">🍰 حلويات</option>
+                    <option value="المشروبات">🥤 مشروبات</option>
+                    <option value="اكلات">🍔 اكلات</option>
+                </select>
+            </div>
+            <button onclick="refreshProductsReport(true)" style="padding:8px 16px; background:#2980b9; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">🔄 تحديث</button>
+            <span id="reportSourceNote" style="font-size:12px; color:#7f8c8d;"></span>
+        </div>
+
+        <!-- الرسوم البيانية -->
+        <div class="rep-grid">
+            <div class="rep-card">
+                <div class="rep-card-title">📦 أكثر المنتجات مبيعاً (عدد المباع)</div>
+                <div id="chartQty"></div>
+            </div>
+            <div class="rep-card">
+                <div class="rep-card-title">💰 أعلى المنتجات (إجمالي المبلغ المباع)</div>
+                <div id="chartAmount"></div>
+            </div>
+        </div>
+
+        <!-- الجدول -->
+        <div class="table-container" style="max-height:380px; overflow-y:auto; margin-top:15px;">
+            <table>
+                <thead>
+                    <tr><th>#</th><th>المنتج</th><th>القسم</th><th>السعر</th><th>عدد المباع</th><th>إجمالي المباع</th><th>المتبقي</th></tr>
+                </thead>
+                <tbody id="reportTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- المجاميع -->
+        <div class="rep-totals">
+            <span>📋 عدد المنتجات: <b id="repTotalProducts" style="color:#2980b9;">0</b></span>
+            <span>🛒 منتجات لها مبيعات: <b id="repSoldProducts" style="color:#2980b9;">0</b></span>
+            <span>📦 إجمالي المباع: <b id="repTotalQty" style="color:#e67e22;">0</b></span>
+            <span>🗃️ إجمالي المتبقي: <b id="repTotalStock" style="color:#7f8c8d;">0</b></span>
+            <span>🏷️ إجمالي المبلغ: <b id="repTotalAmount" style="color:#e74c3c; font-size:18px;">0.000</b> ر.ع</span>
+        </div>
+    </div>
+</div>
 
     <!-- مودال الفواتير -->
     <div id="invoicesListModal" class="modal">
@@ -2113,7 +2202,30 @@ body.has-install-bar { padding-bottom: 80px; }
         async function saveInvoices() { await saveAll(STORES.INVOICES, invoices); }
         async function saveUsers() { await saveAll(STORES.USERS, users); }
 
-        async function loadProducts() { products = await getAll(STORES.PRODUCTS); }
+        // ---- تحميل المنتجات من الشيت (مع نسخة محلية احتياطية) ----
+async function loadProducts() {
+    const cached = await getAll(STORES.PRODUCTS);
+    try {
+        await flushProductQueue();
+        const r = await papi('products_list');
+        if (!r.ok) throw new Error(r.error || 'load_failed');
+        products = r.products.map(fromSheetProduct);
+ 
+        // ترحيل لمرة واحدة: الشيت فارغ وتوجد منتجات محلية قديمة
+        if (products.length === 0 && cached.length > 0) {
+            const yes = await showConfirm(`يوجد ${cached.length} منتج محلي. هل ترفعها إلى Google Sheet؟`, 'ترحيل المنتجات');
+            if (yes) {
+                const up = await papi('products_bulkSave', { products: cached.map(toSheetProduct) });
+                if (up.ok) products = up.products.map(fromSheetProduct);
+            }
+        }
+        await saveProducts();   // تحديث النسخة المحلية
+    } catch (e) {
+        console.warn('تعذر جلب المنتجات من الشيت:', e);
+        products = cached || [];
+        showToast('تعذر الاتصال بالشيت - تم تحميل النسخة المحلية', 'warning', 4000);
+    }
+}
         async function loadCustomers() { customers = await getAll(STORES.CUSTOMERS); }
         async function loadInvoices() { invoices = await getAll(STORES.INVOICES); }
         async function loadUsers() { users = await getAll(STORES.USERS); if (!users) users = []; }
@@ -2271,7 +2383,6 @@ async function loginSubmit() {
 
 async function completeLogin() {
     showLoading();
-    await initData();                    // تحميل البيانات أثناء ظهور اللودنج
     document.getElementById('userNameDisplay').textContent = '👤 ' + currentUser.name;
     applyPermissions();
     applyFilters();
@@ -2309,31 +2420,94 @@ function applyPermissions() {
             hideKeyboard();
         }
 
+
+/* ================= (أ) إضافات جديدة ================= */
+ 
+// رابط نشر السكربت الجديد (Web app URL). إذا دمجته مع سكربت المستخدمين اجعله = API_URL
+const PRODUCTS_API_URL = 'https://script.google.com/macros/s/AKfycbyB1gWSDr3Uc0grNtbI3SMq-MS-vrO3mdi_M-_oIuMW9KmqauYQJePV5yMn9otcdEmLXw/exec';
+ 
+async function papi(action, payload = {}) {
+    const res = await fetch(PRODUCTS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action, ...payload })     // text/plain لتجنب CORS
+    });
+    return await res.json();
+}
+ 
+// تحويل بين شكل البرنامج وشكل الشيت
+function toSheetProduct(p) {
+    return {
+        ProdID: p.id || '', ProdName: p.name, ProdBarcode: p.barcode || '',
+        ProdSection: p.category, ProdPrice: p.price, ProdQnt: p.quantity, PordVat: p.tax
+    };
+}
+function fromSheetProduct(r) {
+    return {
+        id: r.ProdID, name: r.ProdName, barcode: String(r.ProdBarcode || ''),
+        category: r.ProdSection, price: Number(r.ProdPrice) || 0,
+        quantity: Number(r.ProdQnt) || 0, tax: Number(r.PordVat) || 0,
+        spend: Number(r.ProdSpend) || 0, spendPrice: Number(r.ProdSpendPrice) || 0
+    };
+}
+ 
+// تحديث المنتجات محلياً من رد السيرفر
+async function applyServerProducts(list) {
+    (list || []).map(fromSheetProduct).forEach(sp => {
+        const i = products.findIndex(p => p.id === sp.id);
+        if (i >= 0) products[i] = sp; else products.push(sp);
+    });
+    await saveProducts();       // نسخة محلية احتياطية فقط
+    applyFilters();
+}
+ 
+// طابور عمليات البيع/الاسترداد عند انقطاع الإنترنت
+function queueProductOp(action, payload) {
+    const q = JSON.parse(localStorage.getItem('pendingProductOps') || '[]');
+    q.push({ action, payload });
+    localStorage.setItem('pendingProductOps', JSON.stringify(q));
+}
+async function flushProductQueue() {
+    let q = JSON.parse(localStorage.getItem('pendingProductOps') || '[]');
+    while (q.length) {
+        try {
+            const r = await papi(q[0].action, q[0].payload);
+            if (!r.ok && r.error !== 'empty') break;
+        } catch (e) { break; }
+        q.shift();
+        localStorage.setItem('pendingProductOps', JSON.stringify(q));
+    }
+}
+async function sendProductOp(action, payload) {
+    try {
+        const r = await papi(action, payload);
+        if (r.ok) await applyServerProducts(r.products);
+    } catch (e) {
+        queueProductOp(action, payload);
+        showToast('لا يوجد اتصال - ستُرسل المبيعات للشيت لاحقاً', 'warning', 4000);
+    }
+}
+ 
+
+
         // =============================================
         // تهيئة البيانات
         // =============================================
-        async function initData() {
-            try {
-                await openDB();
-                await loadProducts();
-                await loadCustomers();
-                await loadInvoices();
-                await loadUsers();
-                if (!products) products = [];
-                if (!customers) customers = [];
-                if (!invoices) invoices = [];
-                if (!users) users = [];
-                const ids = products.map(p => parseInt(p.id.replace('ICE', '')));
-                nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1000;
-            } catch (error) {
-                console.error('خطأ في تحميل البيانات:', error);
-                products = [];
-                customers = [];
-                invoices = [];
-                users = [];
-                nextId = 1000;
-            }
-        }
+       async function initData() {
+    try {
+        await openDB();
+        await loadProducts();
+        await loadCustomers();
+        await loadInvoices();
+        await loadUsers();
+        if (!products) products = [];
+        if (!customers) customers = [];
+        if (!invoices) invoices = [];
+        if (!users) users = [];
+    } catch (error) {
+        console.error('خطأ في تحميل البيانات:', error);
+        products = []; customers = []; invoices = []; users = [];
+    }
+}
 
         // =============================================
         // البحث عن العملاء
@@ -2510,7 +2684,7 @@ function applyPermissions() {
             displayProducts(filtered);
         }
 
-        function displayProducts(filteredProducts) {
+    function displayProducts(filteredProducts) {
     const grid = document.getElementById('productsGrid');
     grid.innerHTML = '';
     const items = filteredProducts || products;
@@ -2825,6 +2999,9 @@ function applyPermissions() {
             if (sessionCreds && sessionCreds.phone && !currentUser.isAdmin) {
     api('addBill', { phone: sessionCreds.phone, pass: sessionCreds.pass, amount: grandTotal }).catch(() => {});
 }
+sendProductOp('products_sale', {
+    items: cart.map(i => ({ id: i.id, name: i.name, qty: i.quantity, amount: i.total }))
+});
             showInvoice(invoice);
             
             setTimeout(() => { printInvoiceDirect(); }, 500);
@@ -3153,19 +3330,18 @@ html{
         // =============================================
         // إدارة المنتجات
         // =============================================
-        function openAddProduct() {
-            editingProductId = null;
-            document.getElementById('productId').value = `ICE${nextId}`;
-            document.getElementById('productName').value = '';
-            document.getElementById('productCategory').value = '';
-            document.getElementById('productBarcode').value = '';
-            document.getElementById('productQuantity').value = 100;
-            document.getElementById('productPrice').value = '';
-            document.getElementById('productTax').value = 5;
-            document.getElementById('productModal').style.display = 'block';
-            closeModal('productsListModal');
-        }
-
+  function openAddProduct() {
+    editingProductId = null;
+    document.getElementById('productId').value = 'يُولَّد تلقائياً';
+    document.getElementById('productName').value = '';
+    document.getElementById('productCategory').value = '';
+    document.getElementById('productBarcode').value = '';
+    document.getElementById('productQuantity').value = 100;
+    document.getElementById('productPrice').value = '';
+    document.getElementById('productTax').value = 5;
+    document.getElementById('productModal').style.display = 'block';
+    closeModal('productsListModal');
+}
         function editProduct(id) {
             const product = products.find(p => p.id === id);
             if (!product) return;
@@ -3180,36 +3356,43 @@ html{
             document.getElementById('productModal').style.display = 'block';
         }
 
-        async function saveProduct(event) {
-            event.preventDefault();
-            const name = document.getElementById('productName').value.trim();
-            const category = document.getElementById('productCategory').value;
-            const price = parseFloat(document.getElementById('productPrice').value);
-            const quantity = parseInt(document.getElementById('productQuantity').value) || 0;
-            const tax = parseFloat(document.getElementById('productTax').value) || 0;
-            const barcode = document.getElementById('productBarcode').value.trim() || `BAR${Date.now()}`;
-            const id = document.getElementById('productId').value;
-            if (!name || !category || isNaN(price) || price <= 0) {
-                await showAlert('يرجى إدخال اسم المنتج والقسم وسعر صحيح', 'خطأ في الإدخال', 'warning');
-                return;
-            }
-            if (products.some(p => p.name === name && p.id !== id)) {
-                await showAlert('يوجد منتج بنفس الاسم', 'تنبيه', 'warning');
-                return;
-            }
-            const product = { id, name, category, barcode, price, quantity, tax };
-            if (editingProductId) {
-                const index = products.findIndex(p => p.id === editingProductId);
-                if (index >= 0) products[index] = product;
-            } else {
-                products.push(product);
-                nextId++;
-            }
-            await saveProducts();
-            applyFilters();
-            closeModal('productModal');
-            await showToast('✅ تم حفظ المنتج بنجاح', 'success');
-        }
+      async function saveProduct(event) {
+    event.preventDefault();
+    const name = document.getElementById('productName').value.trim();
+    const category = document.getElementById('productCategory').value;
+    const price = parseFloat(document.getElementById('productPrice').value);
+    const quantity = parseInt(document.getElementById('productQuantity').value) || 0;
+    const tax = parseFloat(document.getElementById('productTax').value) || 0;
+    const barcode = document.getElementById('productBarcode').value.trim() || `BAR${Date.now()}`;
+    const id = editingProductId || '';
+ 
+    if (!name || !category || isNaN(price) || price <= 0) {
+        await showAlert('يرجى إدخال اسم المنتج والقسم وسعر صحيح', 'خطأ في الإدخال', 'warning');
+        return;
+    }
+    if (products.some(p => p.name === name && p.id !== id)) {
+        await showAlert('يوجد منتج بنفس الاسم', 'تنبيه', 'warning');
+        return;
+    }
+ 
+    showLoading();
+    try {
+        const r = await papi('products_save', { product: toSheetProduct({ id, name, category, barcode, price, quantity, tax }) });
+        if (!r.ok) throw new Error(r.error || 'save_failed');
+        const saved = fromSheetProduct(r.product);
+        const idx = products.findIndex(p => p.id === saved.id);
+        if (idx >= 0) products[idx] = saved; else products.push(saved);
+    } catch (e) {
+        hideLoading();
+        await showAlert('تعذر الحفظ في Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
+        return;
+    }
+    hideLoading();
+    await saveProducts();
+    applyFilters();
+    closeModal('productModal');
+    await showToast('✅ تم حفظ المنتج بنجاح', 'success');
+}
 
         function openProductsList() {
             document.getElementById('productsSearchInput').value = '';
@@ -3350,9 +3533,15 @@ html{
             row.querySelector('.editable-price').innerHTML = `
                 <input type="number" class="edit-input" value="${product.price}" step="0.01" style="width:100%; padding:4px; border:1px solid #3498db; border-radius:4px;">
             `;
-            row.querySelector('.editable-quantity').innerHTML = `
-                <input type="number" class="edit-input" value="${product.quantity}" step="1" style="width:100%; padding:4px; border:1px solid #3498db; border-radius:4px;">
-            `;
+          row.querySelector('.editable-quantity').innerHTML = `
+    <div style="display:flex; gap:4px; align-items:center; justify-content:center;">
+        <input type="number" class="edit-qty-current" value="${product.quantity}" disabled
+               style="width:60px; padding:4px; border:1px solid #ccc; border-radius:4px; background:#eee; color:#555; text-align:center;">
+        <span style="font-weight:bold; color:#27ae60;">+</span>
+        <input type="number" class="edit-qty-add" placeholder="0" min="0" step="any"
+               style="width:55px; padding:4px; border:1px solid #27ae60; border-radius:4px; text-align:center;">
+    </div>
+`;
             row.querySelector('.editable-tax').innerHTML = `
                 <input type="number" class="edit-input" value="${product.tax}" step="1" style="width:100%; padding:4px; border:1px solid #3498db; border-radius:4px;">
             `;
@@ -3371,50 +3560,70 @@ html{
             showProductsList();
         }
 
-        async function deleteProduct(id) {
-            const confirmed = await showConfirm('هل أنت متأكد من حذف هذا المنتج؟', 'تأكيد');
-            if (!confirmed) return;
-            products = products.filter(p => p.id !== id);
-            await saveProducts();
-            applyFilters();
-            if (document.getElementById('productsListModal').style.display === 'block') {
-                showProductsList();
-            }
-            await showToast('✅ تم حذف المنتج بنجاح', 'success');
-        }
+async function deleteProduct(id) {
+    const confirmed = await showConfirm('هل أنت متأكد من حذف هذا المنتج؟', 'تأكيد');
+    if (!confirmed) return;
+    showLoading();
+    try {
+        const r = await papi('products_delete', { id });
+        if (!r.ok && r.error !== 'not_found') throw new Error(r.error);
+    } catch (e) {
+        hideLoading();
+        await showAlert('تعذر الحذف من Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
+        return;
+    }
+    hideLoading();
+    products = products.filter(p => p.id !== id);
+    await saveProducts();
+    applyFilters();
+    if (document.getElementById('productsListModal').style.display === 'block') showProductsList();
+    await showToast('✅ تم حذف المنتج بنجاح', 'success');
+}
 
-        async function saveRowEdit(productId) {
-            const row = document.querySelector(`tr[data-product-id="${productId}"]`);
-            if (!row) return;
-            const nameInput = row.querySelector('.editable-name input');
-            const categorySelect = row.querySelector('.editable-category select');
-            const barcodeInput = row.querySelector('.editable-barcode input');
-            const priceInput = row.querySelector('.editable-price input');
-            const quantityInput = row.querySelector('.editable-quantity input');
-            const taxInput = row.querySelector('.editable-tax input');
-            const name = nameInput.value.trim();
-            const category = categorySelect.value;
-            const barcode = barcodeInput.value.trim();
-            const price = parseFloat(priceInput.value);
-            const quantity = parseInt(quantityInput.value) || 0;
-            const tax = parseFloat(taxInput.value) || 0;
-            if (!name || !category || isNaN(price) || price <= 0) {
-                await showAlert('يرجى إدخال اسم المنتج والقسم وسعر صحيح', 'خطأ في الإدخال', 'warning');
-                return;
+    async function saveRowEdit(productId) {
+    const row = document.querySelector(`tr[data-product-id="${productId}"]`);
+    if (!row) return;
+    const name = row.querySelector('.editable-name input').value.trim();
+    const category = row.querySelector('.editable-category select').value;
+    const barcode = row.querySelector('.editable-barcode input').value.trim();
+    const price = parseFloat(row.querySelector('.editable-price input').value);
+    const tax = parseFloat(row.querySelector('.editable-tax input').value) || 0;
+    const addQty = parseFloat(row.querySelector('.edit-qty-add').value) || 0;
+
+    if (!name || !category || isNaN(price) || price <= 0) {
+        await showAlert('يرجى إدخال اسم المنتج والقسم وسعر صحيح', 'خطأ في الإدخال', 'warning');
+        return;
+    }
+    if (addQty < 0) {
+        await showAlert('الكمية المضافة يجب ألا تكون سالبة', 'خطأ في الإدخال', 'warning');
+        return;
+    }
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const newLocalQty = +(product.quantity + addQty).toFixed(3);
+
+    showLoading();
+    try {
+        const r = await papi('products_save', {
+            product: {
+                ...toSheetProduct({ id: productId, name, category, barcode, price, quantity: product.quantity, tax }),
+                AddQnt: addQty            // السيرفر يجمعها مع الكمية الحالية
             }
-            const product = products.find(p => p.id === productId);
-            if (!product) return;
-            product.name = name;
-            product.category = category;
-            product.barcode = barcode;
-            product.price = price;
-            product.quantity = quantity;
-            product.tax = tax;
-            await saveProducts();
-            applyFilters();
-            showProductsList();
-            await showToast('✅ تم تحديث المنتج بنجاح', 'success');
-        }
+        });
+        if (!r.ok) throw new Error(r.error || 'save_failed');
+        Object.assign(product, fromSheetProduct(r.product));
+        product.quantity = newLocalQty;   // الكمية المحلية = الحالية + المضافة
+    } catch (e) {
+        hideLoading();
+        await showAlert('تعذر التعديل في Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
+        return;
+    }
+    hideLoading();
+    await saveProducts();
+    applyFilters();
+    showProductsList();
+    await showToast(addQty > 0 ? `✅ تم التحديث وإضافة ${addQty} للكمية` : '✅ تم تحديث المنتج بنجاح', 'success');
+}
 
         function cancelRowEdit(productId) {
             const row = document.querySelector(`tr[data-product-id="${productId}"]`);
@@ -3435,106 +3644,68 @@ html{
             row.querySelector('.editable-tax').innerHTML = oldTax + '%';
             const actionsCell = row.querySelector('td:last-child');
             actionsCell.innerHTML = `
-                <button class="action-btn edit" onclick="enableRowEdit('${productId}')">✏️ تعديل</button>
+                <button class="action-btn edit" onclick="enableRowEdit('${productId}')">✏️</button>
                 <button class="action-btn delete" onclick="deleteProduct('${productId}')">🗑️</button>
             `;
         }
 
         //دالىة اضافة اكسل شيت للمنتجات
-        async function handleExcelUpload(event) {
+    async function handleExcelUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
-
     try {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-
-        // توقع وجود عناوين أعمدة في أول صف
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
         const header = rows[0];
         if (!header || header.length < 4) {
             await showAlert('الملف يجب أن يحتوي على أعمدة: الاسم، القسم، السعر، الكمية على الأقل', 'خطأ في التنسيق', 'error');
-            event.target.value = ''; // إعادة تعيين الإدخال
+            event.target.value = '';
             return;
         }
-
-        // مؤشرات الأعمدة (حسب الترتيب المتوقع)
-        // الأعمدة: الاسم، القسم، الباركود (اختياري)، السعر، الكمية، الضريبة (اختياري)
-        // يمكن تخصيصها حسب الحاجة
-        const nameIdx = 0;
-        const categoryIdx = 1;
-        const barcodeIdx = 2;
-        const priceIdx = 3;
-        const quantityIdx = 4;
-        const taxIdx = 5;
-
+        const validCategories = ['الايسكريم', 'القهوة', 'الحلويات', 'المشروبات', 'اكلات'];
         const newProducts = [];
-        let errors = [];
-
+        const errors = [];
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            if (!row || row.length < 5) continue; // تخطي الصفوف الفارغة أو الناقصة
-
-            const name = String(row[nameIdx] || '').trim();
-            const category = String(row[categoryIdx] || '').trim();
-            const barcode = String(row[barcodeIdx] || '').trim() || `BAR${Date.now()}_${i}`;
-            const price = parseFloat(row[priceIdx]);
-            const quantity = parseInt(row[quantityIdx]) || 0;
-            const tax = parseFloat(row[taxIdx]) || 0;
-
-            if (!name || !category || isNaN(price) || price <= 0) {
-                errors.push(`الصف ${i+1}: اسم أو قسم أو سعر غير صحيح`);
-                continue;
-            }
-
-            // التحقق من وجود قسم صحيح
-            const validCategories = ['الايسكريم', 'القهوة', 'الحلويات', 'المشروبات', 'اكلات'];
-            if (!validCategories.includes(category)) {
-                errors.push(`الصف ${i+1}: القسم "${category}" غير معروف (استخدم: ${validCategories.join('، ')})`);
-                continue;
-            }
-
-            // إنشاء معرف فريد
-            const id = `ICE${nextId++}`;
-
-            newProducts.push({
-                id,
-                name,
-                category,
-                barcode,
-                price,
-                quantity,
-                tax
-            });
+            if (!row || row.length < 5) continue;
+            const name = String(row[0] || '').trim();
+            const category = String(row[1] || '').trim();
+            const barcode = String(row[2] || '').trim() || `BAR${Date.now()}_${i}`;
+            const price = parseFloat(row[3]);
+            const quantity = parseInt(row[4]) || 0;
+            const tax = parseFloat(row[5]) || 0;
+            if (!name || !category || isNaN(price) || price <= 0) { errors.push(`الصف ${i + 1}: اسم أو قسم أو سعر غير صحيح`); continue; }
+            if (!validCategories.includes(category)) { errors.push(`الصف ${i + 1}: القسم "${category}" غير معروف`); continue; }
+            newProducts.push({ id: '', name, category, barcode, price, quantity, tax });
         }
-
         if (newProducts.length === 0) {
             await showAlert('لم يتم العثور على منتجات صالحة للإضافة', 'تنبيه', 'warning');
             event.target.value = '';
             return;
         }
-
-        // إضافة المنتجات الجديدة إلى القائمة
-        products.push(...newProducts);
+ 
+        showLoading();
+        let r;
+        try {
+            r = await papi('products_bulkSave', { products: newProducts.map(toSheetProduct) });
+            if (!r.ok) throw new Error(r.error);
+        } catch (e) {
+            hideLoading();
+            await showAlert('تعذر رفع المنتجات إلى Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
+            event.target.value = '';
+            return;
+        }
+        hideLoading();
+        products.push(...r.products.map(fromSheetProduct));
         await saveProducts();
-
-        // عرض تقرير
+ 
         let msg = `✅ تمت إضافة ${newProducts.length} منتج بنجاح.`;
-        if (errors.length > 0) {
-            msg += `\n\n⚠️ الأخطاء:\n${errors.join('\n')}`;
-        }
-        await showAlert(msg, 'نتيجة الرفع', errors.length > 0 ? 'warning' : 'success');
-
-        // تحديث العرض
+        if (errors.length) msg += `\n\n⚠️ الأخطاء:\n${errors.join('\n')}`;
+        await showAlert(msg, 'نتيجة الرفع', errors.length ? 'warning' : 'success');
         applyFilters();
-        if (document.getElementById('productsListModal').style.display === 'block') {
-            showProductsList();
-        }
-
-        // إعادة تعيين الإدخال
+        if (document.getElementById('productsListModal').style.display === 'block') showProductsList();
         event.target.value = '';
-
     } catch (error) {
         console.error('خطأ في قراءة الملف:', error);
         await showAlert('حدث خطأ أثناء قراءة الملف: ' + error.message, 'خطأ', 'error');
@@ -3544,13 +3715,10 @@ html{
 
 //دالة حذف المنتجات جماعيا
 async function deleteFilteredProducts() {
-    // جلب المنتجات المفلترة حالياً (كما في showProductsList)
     const searchQuery = document.getElementById('productsSearchInput')?.value.toLowerCase().trim() || '';
     const categoryFilter = document.getElementById('productsCategoryFilter')?.value || 'all';
     let filtered = products;
-    if (categoryFilter !== 'all') {
-        filtered = filtered.filter(p => p.category === categoryFilter);
-    }
+    if (categoryFilter !== 'all') filtered = filtered.filter(p => p.category === categoryFilter);
     if (searchQuery) {
         filtered = filtered.filter(p =>
             p.name.toLowerCase().includes(searchQuery) ||
@@ -3563,15 +3731,24 @@ async function deleteFilteredProducts() {
     }
     const confirmed = await showConfirm(`هل أنت متأكد من حذف ${filtered.length} منتج(منتجات) المفلترة؟`, 'تأكيد الحذف الجماعي');
     if (!confirmed) return;
-    // حذف المنتجات المفلترة من المصفوفة الرئيسية
-    const idsToDelete = new Set(filtered.map(p => p.id));
-    products = products.filter(p => !idsToDelete.has(p.id));
+ 
+    const ids = filtered.map(p => p.id);
+    showLoading();
+    try {
+        const r = await papi('products_bulkDelete', { ids });
+        if (!r.ok) throw new Error(r.error);
+    } catch (e) {
+        hideLoading();
+        await showAlert('تعذر الحذف من Google Sheet، تحقق من الإنترنت', 'خطأ', 'error');
+        return;
+    }
+    hideLoading();
+    const set = new Set(ids);
+    products = products.filter(p => !set.has(p.id));
     await saveProducts();
     applyFilters();
-    if (document.getElementById('productsListModal').style.display === 'block') {
-        showProductsList();
-    }
-    await showToast(`✅ تم حذف ${filtered.length} منتج بنجاح`, 'success');
+    if (document.getElementById('productsListModal').style.display === 'block') showProductsList();
+    await showToast(`✅ تم حذف ${ids.length} منتج بنجاح`, 'success');
 }
 
 
@@ -3870,9 +4047,11 @@ async function deleteFilteredProducts() {
                 const product = products.find(p => p.id === item.id);
                 if (product) product.quantity += item.quantity;
             });
-            await saveProducts();
             invoice.paymentMethod = 'مستردة';
             await saveInvoices();
+            sendProductOp('products_refund', {
+    items: invoice.items.map(i => ({ id: i.id, name: i.name, qty: i.quantity, amount: i.total }))
+});
             applyFilters();
             closeModal('refundModal');
             if (document.getElementById('invoicesListModal').style.display === 'block') {
@@ -4434,6 +4613,104 @@ function toggleUserPassword() {
         </div>
     `;
     document.body.appendChild(messageDiv);
+}
+
+
+// =============================================
+// تقرير المنتجات
+// =============================================
+let reportData = [];
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function openProductsReport() {
+    document.getElementById('reportCategory').value = 'all';
+    document.getElementById('productsReportModal').style.display = 'block';
+    await refreshProductsReport(true);
+}
+
+// يجلب آخر البيانات من الشيت (دون تغيير المنتجات الحالية في البرنامج)
+async function refreshProductsReport(fromServer) {
+    const note = document.getElementById('reportSourceNote');
+    reportData = products.slice();
+    note.textContent = 'عرض البيانات المحلية';
+    if (fromServer) {
+        note.textContent = 'جاري التحديث من Google Sheet...';
+        try {
+            const r = await papi('products_list');
+            if (!r.ok) throw new Error(r.error);
+            reportData = r.products.map(fromSheetProduct);
+            note.textContent = '✅ بيانات محدّثة من Google Sheet';
+        } catch (e) {
+            note.textContent = '⚠️ تعذر الاتصال - تُعرض آخر بيانات محلية';
+        }
+    }
+    renderProductsReport();
+}
+
+function renderBarChart(containerId, rows, valueKey, cssClass, formatter) {
+    const box = document.getElementById(containerId);
+    const top = rows.filter(p => (p[valueKey] || 0) > 0)
+        .sort((a, b) => b[valueKey] - a[valueKey])
+        .slice(0, 10);
+    if (top.length === 0) {
+        box.innerHTML = '<div class="rep-empty">لا توجد مبيعات بعد</div>';
+        return;
+    }
+    const max = top[0][valueKey];
+    box.innerHTML = top.map(p => {
+        const pct = Math.max(3, (p[valueKey] / max) * 100);
+        return `
+            <div class="rep-bar-row">
+                <div class="rep-bar-label" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
+                <div class="rep-bar-track"><div class="rep-bar-fill ${cssClass}" style="width:${pct}%"></div></div>
+                <div class="rep-bar-value">${formatter(p[valueKey])}</div>
+            </div>`;
+    }).join('');
+}
+
+function renderProductsReport() {
+    const cat = document.getElementById('reportCategory').value;
+    const rows = reportData.filter(p => cat === 'all' || p.category === cat);
+
+    // الرسوم البيانية (أعلى 10)
+    renderBarChart('chartQty', rows, 'spend', 'qty', v => (+v.toFixed(3)).toString());
+    renderBarChart('chartAmount', rows, 'spendPrice', 'amount', v => v.toFixed(3));
+
+    // الجدول: مرتب حسب إجمالي المباع تنازلياً
+    const icons = { 'الايسكريم': '🍦', 'القهوة': '☕', 'الحلويات': '🍰', 'المشروبات': '🥤', 'اكلات': '🍔' };
+    const sorted = rows.slice().sort((a, b) => (b.spendPrice || 0) - (a.spendPrice || 0) || (b.spend || 0) - (a.spend || 0));
+    const tbody = document.getElementById('reportTableBody');
+    if (sorted.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#bdc3c7; padding:25px;">لا توجد منتجات</td></tr>';
+    } else {
+        tbody.innerHTML = sorted.map((p, i) => `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${icons[p.category] || '📦'} ${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.category || '-')}</td>
+                <td>${(p.price || 0).toFixed(3)}</td>
+                <td>${+(p.spend || 0).toFixed(3)}</td>
+                <td style="font-weight:bold; color:#e74c3c;">${(p.spendPrice || 0).toFixed(3)}</td>
+                <td>${p.quantity ?? 0}</td>
+            </tr>`).join('');
+    }
+
+    // المجاميع
+    let totalQty = 0, totalAmount = 0, totalStock = 0, soldProducts = 0;
+    rows.forEach(p => {
+        totalQty += p.spend || 0;
+        totalAmount += p.spendPrice || 0;
+        totalStock += p.quantity || 0;
+        if ((p.spend || 0) > 0) soldProducts++;
+    });
+    document.getElementById('repTotalProducts').textContent = rows.length;
+    document.getElementById('repSoldProducts').textContent = soldProducts;
+    document.getElementById('repTotalQty').textContent = +totalQty.toFixed(3);
+    document.getElementById('repTotalStock').textContent = +totalStock.toFixed(3);
+    document.getElementById('repTotalAmount').textContent = totalAmount.toFixed(3);
 }
 
 
