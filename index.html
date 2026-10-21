@@ -1410,6 +1410,41 @@ body.has-install-bar { padding-bottom: 80px; }
     .rep-bar-label { flex-basis: 85px; }
     .rep-bar-value { flex-basis: 60px; }
 }
+/* حقل البحث وقائمة القسم في صف واحد على الشاشات الصغيرة */
+@media (max-width: 768px) {
+    .filters-section {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 6px;
+    }
+    .search-box {
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: 0;
+    }
+    .search-box input {
+        width: 100%;
+        min-width: 0;
+    }
+    .category-filter {
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+    }
+    .category-filter select {
+        width: 120px;
+        min-width: 0;
+    }
+    /* إخفاء التسميات لتوفير المساحة (الأيقونات داخل الخيارات تكفي) */
+    .search-box label,
+    .category-filter label {
+        display: none;
+    }
+}
+
+@media (max-width: 380px) {
+    .category-filter select { width: 100px; }
+}
 
 
 
